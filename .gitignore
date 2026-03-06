@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+functions/.env
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+*-adminsdk-*.json
+node_modules/

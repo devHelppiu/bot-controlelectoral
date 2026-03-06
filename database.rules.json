@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "registros": {
+      ".read": true,
+      ".write": false
+    },
+    "conversaciones": {
+      ".read": true,
+      ".write": false
+    },
+    "estadisticas": {
+      ".read": true,
+      ".write": false
+    }
+  }
+}
