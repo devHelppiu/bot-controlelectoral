@@ -108,8 +108,8 @@ def _estado_inicio(from_number: str) -> None:
     """Enviar saludo y solicitar cédula."""
     send_text(
         from_number,
-        "👋 ¡Hola! Bienvenido al *Sistema de Control Electoral*.\n\n"
-        "Este bot te permite registrar tu participación electoral.\n\n"
+        "👋 ¡Hola! Bienvenido al *Sistema de Participación Electoral*.\n\n"
+        "Este bot te permite registrar tu apoyo electoral.\n\n"
         "Por favor, escribe tu *número de cédula* para comenzar:",
     )
     crear_conversacion(from_number, ESTADO_ESPERANDO_CEDULA)
@@ -137,7 +137,7 @@ def _estado_esperando_cedula(from_number: str, mensaje: dict, conv: dict) -> Non
         send_text(
             from_number,
             "⚠️ Esta cédula ya fue registrada anteriormente.\n\n"
-            "Cada cédula solo puede registrar un voto. "
+            "Cada cédula solo puede registrar un apoyo. "
             "Si crees que es un error, contacta al administrador.",
         )
         eliminar_conversacion(from_number)
@@ -193,8 +193,8 @@ def _estado_confirmacion_datos(from_number: str, mensaje: dict, conv: dict) -> N
         send_text(
             from_number,
             "✅ ¡Datos confirmados!\n\n"
-            "Ahora vamos a registrar tu voto.\n\n"
-            "📌 *SENADO:* Escribe el *nombre o apellido* del candidato por el que votaste para *Senado*:",
+            "Ahora vamos a registrar tu apoyo.\n\n"
+            "📌 *SENADO:* Escribe el *nombre o apellido* de tu candidato para *Senado*:",
         )
         actualizar_conversacion(from_number, {"estado": ESTADO_ESPERANDO_CANDIDATO_SENADO})
 
@@ -228,7 +228,7 @@ def _estado_esperando_candidato(from_number: str, mensaje: dict, conv: dict, cor
     if mensaje["type"] != "text" or not mensaje.get("text"):
         send_text(
             from_number,
-            f"⚠️ Por favor, escribe el *nombre o apellido* del candidato de *{label}*:",
+            f"⚠️ Por favor, escribe el *nombre o apellido* de tu candidato de *{label}*:",
         )
         return
 
@@ -236,7 +236,7 @@ def _estado_esperando_candidato(from_number: str, mensaje: dict, conv: dict, cor
     if len(texto) < 2:
         send_text(
             from_number,
-            f"❌ Texto muy corto. Escribe al menos un apellido del candidato de *{label}*:",
+            f"❌ Texto muy corto. Escribe al menos un apellido de tu candidato de *{label}*:",
         )
         return
 
@@ -346,26 +346,18 @@ def _estado_pregunta_consulta(from_number: str, mensaje: dict, conv: dict) -> No
         send_text(
             from_number,
             "📋 *Consulta Presidencial*\n\n"
-            "Escribe el *nombre o apellido* del candidato por el que votaste en la consulta:",
+            "Escribe el *nombre o apellido* de tu candidato de la consulta:",
         )
         actualizar_conversacion(from_number, {"estado": ESTADO_ESPERANDO_CANDIDATO_CONSULTA})
 
     elif respuesta == "btn_consulta_no":
-        send_text(
-            from_number,
-            "👍 Entendido, no solicitaste tarjetón de consulta.\n\n"
-            "Por último, envía una *foto de tu carnet electoral* 📸",
-        )
-        actualizar_conversacion(from_number, {
-            "estado": ESTADO_ESPERANDO_FOTO,
-            "candidato_consulta": None,
-            "partido_consulta": None,
-        })
+        # No solicita consulta → guardar registro y finalizar
+        _guardar_y_finalizar(from_number, conv)
 
     else:
         send_buttons(
             from_number,
-            "¿Solicitaste el tarjetón de la *Consulta Presidencial*?",
+            "¿Vas a solicitar el tarjetón de la *Consulta Presidencial*?",
             [
                 {"id": "btn_consulta_si", "title": "✅ Sí"},
                 {"id": "btn_consulta_no", "title": "❌ No"},
@@ -386,7 +378,7 @@ def _confirmar_candidato(from_number: str, conv: dict, corporacion: str, candida
             f"✅ *{label}* registrado:\n"
             f"👤 *{nombre}*\n"
             f"🏛️ Partido: {partido}\n\n"
-            "Ahora, escribe el *nombre o apellido* del candidato por el que votaste para *Cámara*:",
+            "Ahora, escribe el *nombre o apellido* de tu candidato para *Cámara*:",
         )
         actualizar_conversacion(from_number, {
             "estado": ESTADO_ESPERANDO_CANDIDATO_CAMARA,
@@ -403,7 +395,7 @@ def _confirmar_candidato(from_number: str, conv: dict, corporacion: str, candida
         )
         send_buttons(
             from_number,
-            "¿Solicitaste el tarjetón de la *Consulta Presidencial*?",
+            "¿Vas a solicitar el tarjetón de la *Consulta Presidencial*?",
             [
                 {"id": "btn_consulta_si", "title": "✅ Sí"},
                 {"id": "btn_consulta_no", "title": "❌ No"},
@@ -416,20 +408,76 @@ def _confirmar_candidato(from_number: str, conv: dict, corporacion: str, candida
             "opciones_candidato": None,
         })
     else:
-        # consulta
-        send_text(
-            from_number,
-            f"✅ *{label}* registrado:\n"
-            f"👤 *{nombre}*\n"
-            f"🏛️ Partido: {partido}\n\n"
-            "Por último, envía una *foto de tu carnet electoral* 📸",
-        )
+        # consulta → guardar registro y finalizar
         actualizar_conversacion(from_number, {
-            "estado": ESTADO_ESPERANDO_FOTO,
             "candidato_consulta": nombre,
             "partido_consulta": partido,
             "opciones_candidato": None,
         })
+        conv["candidato_consulta"] = nombre
+        conv["partido_consulta"] = partido
+        _guardar_y_finalizar(from_number, conv)
+
+
+def _guardar_y_finalizar(from_number: str, conv: dict) -> None:
+    """Guardar registro en Firebase y enviar mensaje de despedida."""
+    cedula = conv.get("cedula", "")
+    datos_votante = conv.get("datos_votante", {})
+    candidato_consulta = conv.get("candidato_consulta", "")
+    partido_consulta = conv.get("partido_consulta", "")
+    candidato_senado = conv.get("candidato_senado", "")
+    candidato_camara = conv.get("candidato_camara", "")
+    partido_senado = conv.get("partido_senado", "")
+    partido_camara = conv.get("partido_camara", "")
+
+    registro = {
+        "cedula": cedula,
+        "nombre_completo": datos_votante.get("nombre_completo", ""),
+        "nombres": datos_votante.get("nombres", ""),
+        "apellidos": datos_votante.get("apellidos", ""),
+        "departamento_votacion": datos_votante.get("departamento_votacion", ""),
+        "municipio_votacion": datos_votante.get("municipio_votacion", ""),
+        "zona": datos_votante.get("zona", ""),
+        "puesto": datos_votante.get("puesto", ""),
+        "mesa": datos_votante.get("mesa", ""),
+        "direccion": datos_votante.get("direccion", ""),
+        "departamento_residencia": datos_votante.get("departamento_residencia", ""),
+        "municipio_residencia": datos_votante.get("municipio_residencia", ""),
+        "candidato_consulta": candidato_consulta,
+        "partido_consulta": partido_consulta,
+        "candidato_senado": candidato_senado,
+        "partido_senado": partido_senado,
+        "candidato_camara": candidato_camara,
+        "partido_camara": partido_camara,
+        "foto_url": "",
+        "ocr_verificado": False,
+        "ocr_texto_extraido": "",
+        "ocr_coincidencias": [],
+        "ocr_confianza": 0,
+        "telefono_whatsapp": from_number,
+    }
+
+    guardar_registro(cedula, registro)
+
+    # Construir resumen
+    resumen_consulta = ""
+    if candidato_consulta:
+        resumen_consulta = f"\n🗳️ Consulta: {candidato_consulta}"
+
+    send_text(
+        from_number,
+        f"🎉 *¡Apoyo registrado exitosamente!*\n\n"
+        f"📋 *Resumen:*\n"
+        f"👤 {datos_votante.get('nombre_completo', '')}\n"
+        f"🆔 Cédula: {cedula}{resumen_consulta}\n"
+        f"🏛️ Senado: {candidato_senado}\n"
+        f"🏛️ Cámara: {candidato_camara}\n\n"
+        f"📸 El día de las elecciones te solicitaremos la foto del tarjetón "
+        f"para confirmar tu apoyo.\n\n"
+        f"¡Gracias por participar! 🇨🇴",
+    )
+
+    eliminar_conversacion(from_number)
 
 
 def _estado_esperando_foto(from_number: str, mensaje: dict, conv: dict) -> None:
